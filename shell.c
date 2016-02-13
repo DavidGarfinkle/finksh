@@ -20,7 +20,7 @@ int getcmd(char *prompt, char **args, int *background)
 {
     int length, i = 0;
     char *token, *loc;
-    char *line ;//= (char*) malloc(sizeof(char));
+    char *line = (char*) malloc(sizeof(char));
     size_t linecap = 0;
 
     printf("%s", prompt);
@@ -45,10 +45,13 @@ printf("DEBUG: no input");
                 token[j] = '\0';
         if (strlen(token) > 0) {
 printf("DEBUG token: %s \n", token);
+printf("lala");
             args[i++] = token;
     		}
 		}
+
 		for (int j=i+1; j<20; j++) args[i]=NULL; //erase the leftover arguments from the last time we called this function
+printf("DEBUG getcmd is done");
 		
     return i;
 }
@@ -60,13 +63,47 @@ printf("DEBUG about to free *args\n");
 	}
 }
 
+struct indexed_string {
+	int index; 
+	char string[50];
+};
 
+void print_indexed_strings(struct indexed_string** entries, int length){
+	for (int i=0; i<length; i++){
+		printf("String: %s with index %d at array position %d \n", entries[i]->string, entries[i]->index, i);
+	}
+}
+
+int store_command(struct indexed_string** entries, char* string, int* array_index, int* string_index) {
+	//initialize memory for indexed_string entry
+printf("store_command is called");
+	if(entries[*array_index] == NULL){
+printf("DEBUG entries[%d] is null", *array_index);
+		entries[*array_index] = (struct indexed_string*)malloc(sizeof(struct indexed_string));
+	}
+printf("DEBUG history memory allocated");
+	if(*string) {
+		strcpy(entries[*array_index]->string, string); //save the string (maybe overwrite the previous string stored here)
+		entries[*array_index]->index=*string_index; //set the index of the string we're storing
+	}
+	
+	else return 0;
+
+	return 1;
+}
+	
 
 int main()
 {
     char *args[20];
+
+		struct indexed_string* history[10];	
+		int hist_entry, hist_index = 0; //history_index counts modulo 10 in the struct history array. hist_entry counts the number of the current command we're storing
+		for(int i=0; i<10; i++) history[i]=(struct indexed_string*) malloc(sizeof(struct indexed_string)); //this breaks getline() in getcmd() so that i need to allocate *line before it works
+
     int bg, cnt, child_return;
 		pid_t child_pid;
+		
 
 		while (1)
 		{
@@ -77,14 +114,21 @@ int main()
 			otherwise gets the next command... */
 			bg = 0;
 			cnt = getcmd("\n>>  ", args, &bg);
-				
+
+			if (store_command(history, *args, &hist_index, &hist_entry)) {
+				printf("history index: %d history string: %s\n",history[hist_index]->index,history[hist_index]->string);
+				hist_entry++;
+				hist_index=(hist_index+1)%10;
+printf("hist index %d\n", hist_index);
+			}
+			print_indexed_strings(history,10);
 			//Print Args
 			for (int i = 0; i < cnt; i++) printf("\nArg[%d] = %s", i, args[i]);
 			//Print Background or No Background (& at the end of cmd)
 			if (bg) printf("\nBackground enabled..\n");
 			else printf("\nBackground not enabled \n");
 			printf("\n\n");
-		
+			
 			//Built-in Commands
 			if (!strcmp(*args,"cd")) {
 				chdir(args[1]);

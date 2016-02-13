@@ -27,7 +27,6 @@ int getcmd(char *prompt, char **args, int *background)
     length = getline(&line, &linecap, stdin);
 
     if (length <= 0) {
-printf("DEBUG: no input");
         exit(-1);
     }
 
@@ -44,21 +43,15 @@ printf("DEBUG: no input");
             if (token[j] <= 32) // weird ASCII characters that might delimit arguments have values 32 or less
                 token[j] = '\0';
         if (strlen(token) > 0) {
-printf("DEBUG token: %s \n", token);
-printf("lala");
             args[i++] = token;
     		}
 		}
-
 		for (int j=i+1; j<20; j++) args[i]=NULL; //erase the leftover arguments from the last time we called this function
-printf("DEBUG getcmd is done");
-		
     return i;
 }
 
 void freecmd(char** args){
 	if (strlen(args[0]) > 0) {
-printf("DEBUG about to free *args\n");
 		free(args[0]);
 	}
 }
@@ -101,7 +94,7 @@ int main()
 		int hist_entry, hist_index = 0; //history_index counts modulo 10 in the struct history array. hist_entry counts the number of the current command we're storing
 		for(int i=0; i<10; i++) history[i]=(struct indexed_string*) malloc(sizeof(struct indexed_string)); //this breaks getline() in getcmd() so that i need to allocate *line before it works
 
-    int bg, cnt, child_return;
+    int bg, cnt, child_return, save_history;
 		pid_t child_pid;
 		
 
@@ -113,15 +106,9 @@ int main()
 			(3) if background == 0, the parent will wait,
 			otherwise gets the next command... */
 			bg = 0;
+			save_history = 1;
 			cnt = getcmd("\n>>  ", args, &bg);
 
-			if (store_command(history, *args, &hist_index, &hist_entry)) {
-				printf("history index: %d history string: %s\n",history[hist_index]->index,history[hist_index]->string);
-				hist_entry++;
-				hist_index=(hist_index+1)%10;
-printf("hist index %d\n", hist_index);
-			}
-			print_indexed_strings(history,10);
 			//Print Args
 			for (int i = 0; i < cnt; i++) printf("\nArg[%d] = %s", i, args[i]);
 			//Print Background or No Background (& at the end of cmd)
@@ -140,16 +127,32 @@ printf("hist index %d\n", hist_index);
 			else if(!strcmp(*args,"exit")) {
 				exit(1);
 			}
+			else if(!strcmp(*args,"history")) {
+				print_indexed_strings(history,10);
+			}
 			else {	
 				if ((child_pid = fork())) {
-					if (!bg) waitpid(child_pid, &child_return, 0); //wait for child if int bg is set to 0 
+					if (!bg) {
+						waitpid(child_pid, &child_return, 0); //wait for child if int bg is set to 0 
+						if (child_return) save_history=0; //child_return is false only if execvp executed an erroneous command
+					}
 				}
 				else {
 	printf("CHILD PROCESS\n");
 					execvp(*args, args); 
-					//printf("execvp failed\n"); //printing after a failed execvp causes getcmd() to fail in next command. realloc not allocated error..?
+					exit(-1);
 				}
 			}	
+
+			// c processes logical operators from left to right 
+			if (save_history && store_command(history, *args, &hist_index, &hist_entry)) { 
+				printf("history index: %d history string: %s\n",history[hist_index]->index,history[hist_index]->string);
+				hist_entry++;
+				hist_index=(hist_index+1)%10;
+printf("hist index %d\n", hist_index);
+			}
+			print_indexed_strings(history,10);
+
 			freecmd(args);
 	}	
 }

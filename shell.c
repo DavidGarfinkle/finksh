@@ -3,6 +3,9 @@
 #include <string.h>
 #include <stdlib.h> 
 
+#define MAX_PIDS 10
+#define MAX_ARGS 10
+
 /* Funciton getcmd()
 // INPUTS: string prompt, char**, int*
 // OUTPUT: int i, the number of nonempty strings found in args delimited by \t\n
@@ -67,6 +70,23 @@ void print_indexed_strings(struct indexed_string** entries, int length){
 	}
 }
 
+void print_int_array(int* numbers, int length){
+	int job=1;
+	for (int i=0; i<length; i++){
+printf("number %d kill %d\n", numbers[i], kill(numbers[i],0));
+		if (numbers[i] && kill(numbers[i], 0)){
+			printf("job %d: %d \n", job, numbers[i]);
+			job++;
+		}
+	}
+}
+
+void erase_process(int* numbers, int elt, int length){
+	for (int i=0; i<length; i++){
+		if (numbers[i]==elt) numbers[i]=0;
+	}
+}
+
 int store_command(struct indexed_string** entries, char* string, int* array_index, int* string_index) {
 	//initialize memory for indexed_string entry
 printf("store_command is called");
@@ -84,6 +104,34 @@ printf("DEBUG history memory allocated");
 
 	return 1;
 }
+
+/* determines if arguments have a redirect operator
+ *
+ * return status:
+ * 	  0 redirection operator '<' not found
+ *	 -1 operator is present but on the boundary; it's not separating two arguments
+ * 	 -2 there are two or more reidrection operators present
+ *
+ */
+int output_redirected(char** args){
+	int redirect, num = 0;
+
+	/* check for valid syntax: '<' must separate two arguments */
+	if ((strcmp(args[0],"<") == 0) || (strcmp(args[MAX_ARGS],"<") == 0)) {
+		exit(-1);
+	}
+
+	/* split up arguments for redirection and check for valid syntax: there can only be one redirection */
+	for (int i=1; i<(MAX_ARGS-1); i++){
+		if (strcmp(args[i],"<")) {
+			redirect = i;	
+			num++;	
+		}
+	}
+	if (num>1) exit(-2);
+
+	return redirect;
+}	
 	
 
 int main()
@@ -92,10 +140,13 @@ int main()
 
 		struct indexed_string* history[10];	
 		int hist_entry, hist_index = 0; //history_index counts modulo 10 in the struct history array. hist_entry counts the number of the current command we're storing
+
 		for(int i=0; i<10; i++) history[i]=(struct indexed_string*) malloc(sizeof(struct indexed_string)); //this breaks getline() in getcmd() so that i need to allocate *line before it works
 
     int bg, cnt, child_return, save_history;
 		pid_t child_pid;
+		pid_t pids[MAX_PIDS];
+		int pid_index=0;
 		
 
 		while (1)
@@ -130,15 +181,35 @@ int main()
 			else if(!strcmp(*args,"history")) {
 				print_indexed_strings(history,10);
 			}
+			else if(!strcmp(*args,"fg")){
+				if ((child_pid = atoi(args[1]))) {
+					waitpid(child_pid,&child_return,0);
+					erase_process(pids, child_pid, MAX_PIDS); //erase process id from list of background processes
+				}
+			}
+			else if(!strcmp(*args,"jobs")){
+				print_int_array(pids, MAX_PIDS);
+			}
 			else {	
+			// Fork and create CHILD PROCESS
 				if ((child_pid = fork())) {
-					if (!bg) {
+					/* parent doesn't wait: save child process to list */
+					if (bg) {
+						pids[pid_index]=child_pid;
+						pid_index = (pid_index + 1) % MAX_PIDS;
+					}
+					/* parent waits */
+					else {	
 						waitpid(child_pid, &child_return, 0); //wait for child if int bg is set to 0 
 						if (child_return) save_history=0; //child_return is false only if execvp executed an erroneous command
 					}
 				}
 				else {
 	printf("CHILD PROCESS\n");
+					if ((int n = output_redirected(args))){
+						fclose(stdout);
+						if (!open(args[n+1])) exit(-1); //unable to redirect output
+					}
 					execvp(*args, args); 
 					exit(-1);
 				}

@@ -19,7 +19,7 @@
 // 	3) parse input; delimit by '\t\n'. store an array of pointers in *args[] to each delimited argument. convert each argument to a string by adding null terminator inside *line
 */
 
-int getcmd(char *prompt, char **args, int *background)
+int getcmd(char *prompt, char **args, int* argc, int *background, int *output_redirect)
 {
     int length, i = 0;
     char *token, *loc;
@@ -40,6 +40,15 @@ int getcmd(char *prompt, char **args, int *background)
     } else {
         *background = 0;
 		}
+/*
+		// Check if output is specified.. also part of strsep?
+		if ((loc = index(line, '>')) != NULL) {
+			*output_redirect= 1;
+			*loc = ' ';
+		} else {
+			*output_redirect = 0;
+		}
+*/
 
     while ((token = strsep(&line, " \t\n")) != NULL) {
         for (int j = 0; j < strlen(token); j++)
@@ -49,6 +58,7 @@ int getcmd(char *prompt, char **args, int *background)
             args[i++] = token;
     		}
 		}
+		*argc = i + 1;	
 		for (int j=i+1; j<20; j++) args[i]=NULL; //erase the leftover arguments from the last time we called this function
     return i;
 }
@@ -113,37 +123,50 @@ printf("DEBUG history memory allocated");
  * 	 -2 there are two or more reidrection operators present
  *
  */
-int output_redirected(char** args){
-	int redirect, num = 0;
-
+int output_redirected(char** args, int argc){
+	int op_index, num = 0; // index of operator pointer in args array and number of operators '>' found
+printf("output_redirected called\n");
 	/* check for valid syntax: '<' must separate two arguments */
-	if ((strcmp(args[0],"<") == 0) || (strcmp(args[MAX_ARGS],"<") == 0)) {
-		exit(-1);
-	}
+//printf("%d \n", (strcmp(args[0],"<") == 0));
+//printf("%d \n", (strcmp(args[argc-1],"<") == 0));
 
+/*
+	if ((strcmp(args[0],"<") == 0) || (strcmp(args[MAX_ARGS-1],"<") == 0)) {
+printf("yes\n");
+		return(-1);
+	}
+*/
+
+printf("output_redirects before counting num: %d argc: %d \n",num, argc);
 	/* split up arguments for redirection and check for valid syntax: there can only be one redirection */
-	for (int i=1; i<(MAX_ARGS-1); i++){
-		if (strcmp(args[i],"<")) {
-			redirect = i;	
+/*
+	for (int i=0; i<(argc); i++){
+printf("strcmp: %d", strcmp(args[i], ">"));
+		if (strcmp(args[i],">") == 0) {
+			op_index = i;	
 			num++;	
 		}
 	}
-	if (num>1) exit(-2);
+*/
 
-	return redirect;
+printf("output_redirects after counting num: %d\n", num);
+	if (num>1) return(-2);
+
+	return op_index;
 }	
 	
 
 int main()
 {
     char *args[20];
+		int argc;
 
 		struct indexed_string* history[10];	
 		int hist_entry, hist_index = 0; //history_index counts modulo 10 in the struct history array. hist_entry counts the number of the current command we're storing
 
 		for(int i=0; i<10; i++) history[i]=(struct indexed_string*) malloc(sizeof(struct indexed_string)); //this breaks getline() in getcmd() so that i need to allocate *line before it works
 
-    int bg, cnt, child_return, save_history;
+    int bg, output_r, cnt, child_return, save_history;
 		pid_t child_pid;
 		pid_t pids[MAX_PIDS];
 		int pid_index=0;
@@ -158,7 +181,7 @@ int main()
 			otherwise gets the next command... */
 			bg = 0;
 			save_history = 1;
-			cnt = getcmd("\n>>  ", args, &bg);
+			cnt = getcmd("\n>>  ", args, &argc, &bg, &output_r);
 
 			//Print Args
 			for (int i = 0; i < cnt; i++) printf("\nArg[%d] = %s", i, args[i]);
@@ -205,11 +228,19 @@ int main()
 					}
 				}
 				else {
-	printf("CHILD PROCESS\n");
-					if ((int n = output_redirected(args))){
-						fclose(stdout);
-						if (!open(args[n+1])) exit(-1); //unable to redirect output
+printf("CHILD PROCESS\n");
+//				int n = output_redirected(args, argc); output_redirected() is broken and doesn't work
+// printf("DEBUG: %d redirects\n", output_r);
+					if (*args[1] == '>'){
+printf("yes file name %s \n", args[2]);
+						FILE *fd = fopen(args[2],"w");
+						dup2(fd, 1);
+//						close(1);
+printf("about to call\n");
+					//	if (!open(args[2])) exit(-1); //unable to redirect output
+						execvp(*args,&*args);
 					}
+printf("about to execvp with child\n");
 					execvp(*args, args); 
 					exit(-1);
 				}
